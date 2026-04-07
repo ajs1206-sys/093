@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>小恐龍電子雞 - 躲避障礙版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+        :root {
+            --lcd-bg: #b8ceb3;
+        }
+
+        body {
+            font-family: 'Press Start 2P', cursive, sans-serif;
+            background: #1a2e1a;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        /* 跑馬燈動畫 */
+        @keyframes marquee {
+            0% { transform: translateX(100%); }
+            100% { transform: translateX(-100%); }
+        }
+
+        .marquee-text {
+            display: inline-block;
+            white-space: nowrap;
+            animation: marquee 10s linear infinite;
+        }
+
+        /* 像素抖動動畫 */
+        @keyframes bounce-pixel {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-4px); }
+        }
+        .animate-bounce-pixel {
+            animation: bounce-pixel 0.8s steps(2) infinite;
+        }
+
+        /* 蛋殼背景紋理 */
+        .pattern-dots {
+            background-image: radial-gradient(circle, #000 15%, transparent 20%);
+            background-size: 40px 40px;
+            opacity: 0.15;
+        }
+        .pattern-stripes {
+            background-image: linear-gradient(45deg, #000 25%, transparent 25%, transparent 50%, #000 50%, #000 75%, transparent 75%, transparent 100%);
+            background-size: 60px 60px;
+            opacity: 0.1;
+        }
+
+        /* 螢幕 LCD 格狀紋理 */
+        .lcd-grid {
+            background-image: linear-gradient(var(--lcd-bg) 1px, transparent 1px), 
+                              linear-gradient(90deg, var(--lcd-bg) 1px, transparent 1px);
+            background-size: 4px 4px;
+            background-color: rgba(0,0,0,0.05);
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+        }
+
+        .shell-shape {
+            border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+            box-shadow: inset -12px -12px 25px rgba(0,0,0,0.3), 0 35px 70px rgba(0,0,0,0.7);
+        }
+
+        .jump-animation {
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        /* 移除按鈕藍色外框 */
+        button:focus { outline: none; }
+    </style>
+</head>
+<body>
+
+    <!-- 背景裝飾 -->
+    <div class="fixed inset-0 z-0 pointer-events-none">
+        <div class="absolute inset-0 bg-gradient-to-b from-[#ff7e33] via-[#8e44ad] to-[#1a2e1a] opacity-90"></div>
+        <svg class="absolute bottom-0 w-full h-[60%] opacity-40" viewBox="0 0 1000 500" preserveAspectRatio="none">
+            <path d="M0 500 L150 200 L300 500 L500 150 L750 500 L1000 250 L1000 500 Z" fill="#4a148c" />
+            <path d="M0 500 L250 300 L550 500 L850 280 L1000 500 Z" fill="#311b92" />
+        </svg>
+    </div>
+
+    <!-- 電子雞主體 -->
+    <div id="tamagotchi-shell" class="shell-shape relative z-20 w-80 h-[450px] border-[12px] border-[#999] bg-[#ddd] flex flex-col items-center p-4 pt-14 transition-all duration-700 overflow-hidden">
+        
+        <!-- 背景紋理層 -->
+        <div id="pattern-layer" class="absolute inset-0 pointer-events-none"></div>
+
+        <!-- LCD 螢幕 -->
+        <div class="z-30 w-full h-48 bg-zinc-900 border-[10px] border-zinc-800 rounded-[35px] relative flex flex-col overflow-hidden shadow-[0_0_20px_rgba(0,0,0,0.6)]">
+            <div class="absolute inset-0 bg-[#b8ceb3]">
+                <div class="lcd-grid"></div>
+            </div>
+
+            <!-- 內容顯示區 -->
+            <div id="screen-content" class="relative z-10 flex-1 flex flex-col items-center justify-center p-2 text-zinc-900 overflow-hidden">
+                <!-- 初始畫面 -->
+                <div id="view-start" class="flex flex-col items-center gap-2">
+                    <div class="text-[10px] bg-white/50 px-2 py-1 border-2 border-black rounded shadow-[2px_2px_0px_#000]">小恐龍電子雞</div>
+                    <div class="text-4xl animate-bounce">🥚</div>
+                    <div class="text-[8px] animate-pulse">按 B 鍵開始</div>
+                </div>
+            </div>
+            
+            <!-- 訊息列 -->
+            <div class="relative z-10 h-7 bg-[#9db195] flex items-center border-t border-black/10 overflow-hidden">
+                <div id="marquee" class="text-[8px] font-bold px-2 marquee-text">歡迎來到侏羅紀世界！</div>
+            </div>
+        </div>
+
+        <!-- 按鈕區域 -->
+        <div class="mt-12 flex gap-8 z-30">
+            <div class="flex flex-col items-center">
+                <button id="btnA" class="w-12 h-12 bg-gradient-to-b from-zinc-100 to-zinc-400 rounded-full border-b-[5px] border-zinc-600 active:border-b-0 active:translate-y-1 shadow-[0_6px_12px_rgba(0,0,0,0.4)] flex items-center justify-center group">
+                    <div class="w-6 h-6 rounded-full border border-zinc-500/50 shadow-inner"></div>
+                </button>
+                <span class="mt-2 text-[10px] text-white font-bold drop-shadow-md">A 切換</span>
+            </div>
+            <div class="flex flex-col items-center">
+                <button id="btnB" class="w-12 h-12 bg-gradient-to-b from-zinc-100 to-zinc-400 rounded-full border-b-[5px] border-zinc-600 active:border-b-0 active:translate-y-1 shadow-[0_6px_12px_rgba(0,0,0,0.4)] flex items-center justify-center group">
+                    <div class="w-6 h-6 rounded-full border border-zinc-500/50 shadow-inner"></div>
+                </button>
+                <span class="mt-2 text-[10px] text-white font-bold drop-shadow-md">B 跳躍</span>
+            </div>
+            <div class="flex flex-col items-center">
+                <button id="btnC" class="w-12 h-12 bg-gradient-to-b from-zinc-100 to-zinc-400 rounded-full border-b-[5px] border-zinc-600 active:border-b-0 active:translate-y-1 shadow-[0_6px_12px_rgba(0,0,0,0.4)] flex items-center justify-center group">
+                    <div class="w-6 h-6 rounded-full border border-zinc-500/50 shadow-inner"></div>
+                </button>
+                <span class="mt-2 text-[10px] text-white font-bold drop-shadow-md">C 返回</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 狀態管理 ---
+        let gameState = 'start'; // start, setup_shell, setup_egg, tutorial, hatching, baby, evolution, evolution_ready
+        let activeMode = 'main'; // main, feeding, gaming, stats, dna, clinic, cleaning
+        let shellColor = '#b39ddb';
+        let eggType = 'dots';
+        let evolutionPath = null;
+        let menuIndex = 0;
+        let selectionIndex = 0;
+        let tutorialPage = 0;
+        
+        const pet = {
+            hunger: 80,
+            happiness: 80,
+            health: 100,
+            age: 0,
+            totalFed: 0,
+            isDead: false,
+            hasPoop: false,
+            isSick: false
+        };
+
+        // 遊戲專用
+        let gameScore = 0;
+        let isJumping = false;
+        let obstaclePos = 110;
+        let gameActive = false;
+        let gameLoop = null;
+
+        const shellOptions = [
+            { name: '迷幻紫', color: '#b39ddb', border: '#7e57c2' },
+            { name: '雨林綠', color: '#a5d6a7', border: '#2e7d32' },
+            { name: '珊瑚粉', color: '#f48fb1', border: '#c2185b' },
+            { name: '鋼鐵灰', color: '#cfd8dc', border: '#455a64' }
+        ];
+
+        const eggOptions = [
+            { id: 'dots', name: '斑點基因', icon: '🥚' },
+            { id: 'stripes', name: '條紋基因', icon: '🥚〰️' },
+            { id: 'heart', name: '愛心基因', icon: '🥚❤️' }
+        ];
+
+        const foodOptions = [
+            { id: 'fern', name: '蕨類', icon: '🌿' },
+            { id: 'meat', name: '鮮肉', icon: '🥩' },
+            { id: 'bug', name: '昆蟲', icon: '🐛' }
+        ];
+
+        // --- DOM 元素 ---
+        const shell = document.getElementById('tamagotchi-shell');
+        const screen = document.getElementById('screen-content');
+        const marquee = document.getElementById('marquee');
+        const patternLayer = document.getElementById('pattern-layer');
+
+        // --- 輔助函式 ---
+        function updateMessage(msg) {
+            marquee.innerText = msg;
+        }
+
+        // --- 渲染渲染邏輯 ---
+        function render() {
+            if (pet.isDead) {
+                screen.innerHTML = `
+                    <div class="text-center animate-bounce">
+                        <div class="text-4xl">👻</div>
+                        <div class="text-[10px] font-bold">遊戲結束</div>
+                        <button onclick="location.reload()" class="mt-2 text-[8px] bg-black text-white px-2 py-1 rounded">重新開始</button>
+                    </div>
+                `;
+                return;
+            }
+
+            // 根據 gameState 與 activeMode 決定內容
+            if (gameState === 'start') {
+                screen.innerHTML = `
+                    <div class="flex flex-col items-center gap-2">
+                        <div class="text-[10px] bg-white/50 px-2 py-1 border-2 border-black rounded shadow-[2px_2px_0px_#000]">小恐龍電子雞</div>
+                        <div class="text-4xl animate-bounce">🥚</div>
+                        <div class="text-[8px] animate-pulse">按 B 鍵開始</div>
+                    </div>
+                `;
+            } else if (gameState === 'setup_shell') {
+                const opt = shellOptions[selectionIndex];
+                screen.innerHTML = `
+                    <div class="text-center">
+                        <div class="text-[10px] font-bold mb-2">主機顏色</div>
+                        <div class="w-16 h-16 rounded-full border-4 border-black/20 mx-auto shadow-lg" style="background-color: ${opt.color}"></div>
+                        <div class="text-[9px] mt-2 font-bold uppercase">${opt.name}</div>
+                    </div>
+                `;
+            } else if (gameState === 'setup_egg') {
+                const opt = eggOptions[selectionIndex];
+                screen.innerHTML = `
+                    <div class="text-center">
+                        <div class="text-[10px] font-bold mb-2">選擇基因</div>
+                        <div class="text-4xl py-2 drop-shadow-md">${opt.icon}</div>
+                        <div class="text-[9px] mt-1 font-bold uppercase bg-black/10 px-2 rounded">${opt.name}</div>
+                    </div>
+                `;
+            } else if (gameState === 'tutorial') {
+                let content = '';
+                if (tutorialPage === 0) {
+                    content = `<div class="text-[8px] space-y-1"><div>A: 選單切換</div><div>B: 執行/跳躍</div><div>C: 返回</div></div>`;
+                } else if (tutorialPage === 1) {
+                    content = `<div class="grid grid-cols-2 gap-1 text-[7px]"><div>🌿 餵食</div><div>🌵 遊戲</div><div>💉 醫療</div><div>💩 清理</div></div>`;
+                } else {
+                    content = `<div class="text-[7px]">能量滿3次可進化。生病時不能玩遊戲喔！</div>`;
+                }
+                screen.innerHTML = `
+                    <div class="w-full h-full p-2 flex flex-col items-center">
+                        <div class="text-[9px] font-black border-b border-black/20 w-full text-center pb-1 mb-2">新手手冊 (${tutorialPage+1}/3)</div>
+                        ${content}
+                        <div class="mt-auto text-[6px] animate-pulse">A 翻頁 / B 進入遊戲</div>
+                    </div>
+                `;
+            } else if (gameState === 'hatching') {
+                screen.innerHTML = `<div class="text-4xl animate-bounce">🥚</div>`;
+            } else {
+                // 主遊戲流程
+                if (activeMode === 'main') {
+                    screen.innerHTML = renderMain();
+                } else if (activeMode === 'gaming') {
+                    screen.innerHTML = renderGaming();
+                } else if (activeMode === 'stats') {
+                    screen.innerHTML = `
+                        <div class="w-full px-2 text-[9px] font-bold space-y-1">
+                            <div class="flex justify-between border-b border-black/10"><span>飢餓</span><span>${Math.round(pet.hunger)}%</span></div>
+                            <div class="flex justify-between border-b border-black/10"><span>快樂</span><span>${Math.round(pet.happiness)}%</span></div>
+                            <div class="flex justify-between border-b border-black/10"><span>健康</span><span>${Math.round(pet.health)}%</span></div>
+                            <div class="text-center mt-2 text-[7px]">按 C 返回</div>
+                        </div>
+                    `;
+                } else if (activeMode === 'feeding') {
+                    screen.innerHTML = `<div class="text-center"><div class="text-4xl animate-bounce">${foodOptions[selectionIndex].icon}</div><div class="text-[9px] font-bold">${foodOptions[selectionIndex].name}</div></div>`;
+                }
+            }
+        }
+
+        function renderMain() {
+            const icons = [
+                { id: 'feeding', icon: '🍴' },
+                { id: 'light', icon: '🌙' },
+                { id: 'gaming', icon: '🌵' },
+                { id: 'clinic', icon: '💉' },
+                { id: 'cleaning', icon: '💩' },
+                { id: 'stats', icon: '📊' },
+                { id: 'dna', icon: '🧬' },
+                { id: 'clock', icon: '🕒' }
+            ];
+
+            const topRow = icons.slice(0, 4);
+            const bottomRow = icons.slice(4, 8);
+
+            const petHtml = `
+                <div class="relative ${isJumping ? 'jump-animation -translate-y-10' : 'animate-bounce-pixel'}">
+                    ${pet.hasPoop ? '<div class="absolute -left-6 bottom-0 text-xl">💩</div>' : ''}
+                    ${pet.isSick ? '<div class="absolute -right-4 top-0 text-red-600 text-xs">⚠️</div>' : ''}
+                    <svg viewBox="0 0 100 100" class="w-16 h-16 fill-zinc-900 ${pet.isSick ? 'opacity-50' : ''}">
+                        ${gameState === 'evolution' ? renderEvolvedPet() : renderBabyPet()}
+                    </svg>
+                </div>
+            `;
+
+            return `
+                <div class="w-full h-full flex flex-col justify-between">
+                    <div class="flex justify-around">
+                        ${topRow.map((item, i) => `<span class="${menuIndex === i ? 'scale-125 font-bold shadow-lg' : 'opacity-30'}">${item.icon}</span>`).join('')}
+                    </div>
+                    <div class="flex-1 flex items-center justify-center">${petHtml}</div>
+                    <div class="flex justify-around">
+                        ${bottomRow.map((item, i) => `<span class="${menuIndex === (i+4) ? 'scale-125 font-bold shadow-lg' : 'opacity-30'}">${item.icon}</span>`).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderBabyPet() {
+            let pattern = '';
+            if (eggType === 'dots') pattern = '<circle cx="42" cy="55" r="2" fill="white" opacity="0.5" />';
+            else if (eggType === 'stripes') pattern = '<rect x="35" y="55" width="20" height="2" fill="white" opacity="0.4" />';
+            else pattern = '<path d="M48 64 L46 62 A1 1 0 0 1 50 62 L48 64" fill="white" transform="scale(3)" />';
+
+            return `
+                <circle cx="50" cy="60" r="25" />
+                ${pattern}
+                <rect x="65" y="45" width="15" height="10" />
+                <circle cx="72" cy="48" r="2" fill="white" />
+                <path d="M40 85 L35 95 M60 85 L65 95" stroke="black" strokeWidth="4" />
+            `;
+        }
+
+        function renderEvolvedPet() {
+            if (evolutionPath === 'triceratops') return '<path d="M10 70 Q 50 10 90 70 L 10 70" />';
+            if (evolutionPath === 'trex') return '<rect x="25" y="30" width="40" height="50" /><rect x="65" y="35" width="20" height="15" />';
+            return '<path d="M5 50 Q 50 30 95 50 Q 50 70 5 50" /><circle cx="50" cy="45" r="8" />';
+        }
+
+        function renderGaming() {
+            return `
+                <div class="relative w-full h-full overflow-hidden">
+                    <div class="absolute top-0 right-0 text-[8px] font-bold">🏆 ${gameScore}</div>
+                    ${!gameActive ? 
+                        `<div class="flex flex-col items-center justify-center h-full gap-1">
+                            <div class="text-2xl">🌵</div>
+                            <div class="text-[7px]">按 B 開始跳躍</div>
+                         </div>` : 
+                        `<div class="absolute bottom-4 left-4 ${isJumping ? '-translate-y-12' : ''} transition-all duration-300">
+                            <div class="text-2xl">🦖</div>
+                         </div>
+                         <div class="absolute bottom-4 text-xl" style="left: ${obstaclePos}%">🌵</div>
+                         <div class="absolute bottom-4 w-full h-px bg-black/20"></div>`
+                    }
+                    ${gameActive && obstaclePos < 0 ? '' : ''}
+                </div>
+            `;
+        }
+
+        // --- 遊戲邏輯 ---
+        function startGameLoop() {
+            if (gameLoop) clearInterval(gameLoop);
+            obstaclePos = 110;
+            gameScore = 0;
+            gameActive = true;
+            gameLoop = setInterval(() => {
+                obstaclePos -= 5;
+                if (obstaclePos < -10) {
+                    obstaclePos = 110;
+                    gameScore++;
+                    render();
+                }
+                // 碰撞檢查
+                if (obstaclePos > 5 && obstaclePos < 25 && !isJumping) {
+                    endGame();
+                }
+                render();
+            }, 100);
+        }
+
+        function endGame() {
+            gameActive = false;
+            clearInterval(gameLoop);
+            pet.happiness = Math.min(100, pet.happiness + (gameScore * 2));
+            updateMessage(`遊戲結束！得分: ${gameScore}`);
+            setTimeout(() => {
+                activeMode = 'main';
+                render();
+            }, 2000);
+        }
+
+        // --- 按鈕事件 ---
+        document.getElementById('btnA').onclick = () => {
+            if (gameState === 'start') {
+                gameState = 'setup_shell';
+                updateMessage('請挑選主機顏色');
+            } else if (gameState === 'setup_shell') {
+                selectionIndex = (selectionIndex + 1) % shellOptions.length;
+            } else if (gameState === 'setup_egg') {
+                selectionIndex = (selectionIndex + 1) % eggOptions.length;
+            } else if (gameState === 'tutorial') {
+                tutorialPage = (tutorialPage + 1) % 3;
+            } else if (activeMode === 'main') {
+                menuIndex = (menuIndex + 1) % 8;
+            } else if (activeMode === 'feeding') {
+                selectionIndex = (selectionIndex + 1) % foodOptions.length;
+            } else if (activeMode === 'gaming' && gameActive) {
+                jump();
+            }
+            render();
+        };
+
+        document.getElementById('btnB').onclick = () => {
+            if (gameState === 'start') {
+                gameState = 'setup_shell';
+                updateMessage('請挑選主機顏色');
+            } else if (gameState === 'setup_shell') {
+                const opt = shellOptions[selectionIndex];
+                shellColor = opt.color;
+                shell.style.backgroundColor = shellColor;
+                shell.style.borderColor = opt.border;
+                gameState = 'setup_egg';
+                selectionIndex = 0;
+                updateMessage('選擇基因蛋：A 切換 / B 確認');
+            } else if (gameState === 'setup_egg') {
+                eggType = eggOptions[selectionIndex].id;
+                patternLayer.className = `absolute inset-0 pointer-events-none pattern-${eggType}`;
+                gameState = 'tutorial';
+                tutorialPage = 0;
+                updateMessage('新手教學：A 下一頁 / B 進入遊戲');
+            } else if (gameState === 'tutorial') {
+                gameState = 'hatching';
+                updateMessage('基因融合中...');
+                setTimeout(() => {
+                    gameState = 'baby';
+                    updateMessage('孵化完成！開始冒險吧');
+                    render();
+                }, 2000);
+            } else if (gameState === 'evolution_ready') {
+                evolutionPath = 'trex'; // 簡化邏輯
+                gameState = 'evolution';
+                updateMessage('進化完成！');
+            } else if (activeMode === 'main') {
+                handleMenuAction();
+            } else if (activeMode === 'gaming') {
+                if (!gameActive) startGameLoop();
+                else jump();
+            } else if (activeMode === 'feeding') {
+                const food = foodOptions[selectionIndex];
+                pet.hunger = Math.min(100, pet.hunger + 30);
+                pet.totalFed++;
+                updateMessage(`吃了 ${food.name}！(${pet.totalFed}/3)`);
+                activeMode = 'main';
+                if (pet.totalFed >= 3 && gameState === 'baby') {
+                    gameState = 'evolution_ready';
+                    updateMessage('能量飽滿！按 B 進化');
+                }
+            }
+            render();
+        };
+
+        document.getElementById('btnC').onclick = () => {
+            if (activeMode !== 'main') {
+                activeMode = 'main';
+                gameActive = false;
+                clearInterval(gameLoop);
+                updateMessage('返回主選單');
+            }
+            render();
+        };
+
+        function jump() {
+            if (isJumping) return;
+            isJumping = true;
+            render();
+            setTimeout(() => {
+                isJumping = false;
+                render();
+            }, 500);
+        }
+
+        function handleMenuAction() {
+            const actions = ['feeding', 'light', 'gaming', 'clinic', 'cleaning', 'stats', 'dna', 'clock'];
+            const action = actions[menuIndex];
+
+            if (action === 'feeding') {
+                activeMode = 'feeding';
+                selectionIndex = 0;
+            } else if (action === 'gaming') {
+                if (pet.isSick) {
+                    updateMessage('恐龍生病了，不能玩遊戲');
+                } else {
+                    activeMode = 'gaming';
+                }
+            } else if (action === 'stats') {
+                activeMode = 'stats';
+            } else if (action === 'clinic') {
+                if (pet.isSick) {
+                    pet.isSick = false;
+                    pet.health = 100;
+                    updateMessage('治療成功！');
+                } else updateMessage('恐龍很健康');
+            } else if (action === 'cleaning') {
+                if (pet.hasPoop) {
+                    pet.hasPoop = false;
+                    updateMessage('環境打掃乾淨了');
+                } else updateMessage('這裡很乾淨');
+            }
+        }
+
+        // --- 生命週期定時器 ---
+        setInterval(() => {
+            if (pet.isDead || ['start', 'hatching', 'setup_shell', 'setup_egg'].includes(gameState)) return;
+            
+            pet.hunger = Math.max(0, pet.hunger - 1);
+            pet.happiness = Math.max(0, pet.happiness - 1);
+            
+            if (pet.hunger === 0 || pet.hasPoop) {
+                pet.health = Math.max(0, pet.health - 2);
+                if (Math.random() > 0.95) pet.isSick = true;
+            }
+            
+            if (!pet.hasPoop && Math.random() > 0.98) {
+                pet.hasPoop = true;
+                render();
+            }
+
+            if (pet.health <= 0) {
+                pet.isDead = true;
+                render();
+            }
+        }, 5000);
+
+        // 初始渲染
+        render();
+
+    </script>
+</body>
+</html>
